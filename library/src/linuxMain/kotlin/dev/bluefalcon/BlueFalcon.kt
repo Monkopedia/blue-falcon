@@ -136,13 +136,9 @@ actual class BlueFalcon actual constructor(
                 }
                 propertiesListeners[impl.device.objectPath] = listener
 
-                if (deviceProxy.connected) {
-                    // Disconnect stale connection from a previous process
-                    log?.info("Disconnecting stale connection to ${impl.uuid}")
-                    deviceProxy.disconnect()
-                    delay(1000) // Let the peripheral start re-advertising
-                }
-
+                // TODO: decide how to handle devices already connected in BlueZ
+                // from a previous process. Currently this will fail if the device
+                // is already connected.
                 deviceProxy.connect()
             } catch (e: Exception) {
                 log?.error("Connect failed: ${e.message}", e)

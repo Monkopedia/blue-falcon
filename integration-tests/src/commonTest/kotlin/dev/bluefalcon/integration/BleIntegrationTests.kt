@@ -36,7 +36,7 @@ class BleIntegrationTests {
                 val found = scanForBfTestDevice(harness)
                 // connectAndDiscover handles both fresh connections and
                 // devices that are already connected in the BLE stack
-                peripheral = harness.connectAndDiscover(found, timeoutMs = 30_000L)
+                peripheral = harness.connectAndDiscover(found, timeoutMs = 20_000L)
                 setupDone = true
             }
         }
@@ -205,6 +205,19 @@ class BleIntegrationTests {
     // TODO: L2CAP test fails — Android's createL2capChannel requires an
     //  encrypted link and may not work with the ESP32-C6's CoC server.
     //  blue-falcon may need createInsecureL2capChannel support.
+
+    // ---- Cleanup ----
+    // Named with zz_ prefix to ensure it runs last (alphabetical ordering)
+
+    @Test
+    fun zz_disconnect(): Unit = runBlocking {
+        if (setupDone) {
+            harness.disconnectAndAwait(peripheral)
+            harness.destroy()
+            harness.falcon.destroy()
+            setupDone = false
+        }
+    }
 }
 
 /**
