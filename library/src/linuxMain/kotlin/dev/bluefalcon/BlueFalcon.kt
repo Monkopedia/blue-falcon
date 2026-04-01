@@ -70,27 +70,26 @@ actual class BlueFalcon actual constructor(
                 }
                 adapterProxy.setDiscoveryFilter(filterMap)
 
-                // Listen for newly discovered devices
+                adapterProxy.startDiscovery()
+
+                // Poll GetManagedObjects to discover devices.
+                // InterfacesAdded signals are unreliable for devices that
+                // BlueZ has recently seen, so we poll periodically.
                 scanJob = scope.launch {
-                    objectManagerProxy.interfacesAdded.collect { event ->
-                        if (event.interfaces.containsKey("org.bluez.Device1")) {
-                            handleDeviceFound(
-                                event.`object`,
-                                event.interfaces["org.bluez.Device1"] ?: emptyMap()
-                            )
+                    while (isScanning) {
+                        try {
+                            val managed = objectManagerProxy.getManagedObjects()
+                            for ((path, interfaces) in managed) {
+                                if (!path.value.startsWith(adapterPath.value + "/dev_")) continue
+                                val devProps = interfaces["org.bluez.Device1"] ?: continue
+                                handleDeviceFound(path, devProps)
+                            }
+                        } catch (e: Exception) {
+                            log?.debug("Scan poll error: ${e.message}")
                         }
+                        delay(1000)
                     }
                 }
-
-                // Report already-known devices from BlueZ cache
-                val managed = objectManagerProxy.getManagedObjects()
-                for ((path, interfaces) in managed) {
-                    if (!path.value.startsWith(adapterPath.value + "/dev_")) continue
-                    val devProps = interfaces["org.bluez.Device1"] ?: continue
-                    handleDeviceFound(path, devProps)
-                }
-
-                adapterProxy.startDiscovery()
             } catch (e: Exception) {
                 log?.error("Scan failed: ${e.message}", e)
                 isScanning = false
