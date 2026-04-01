@@ -21,6 +21,7 @@ class BlueFalconTestHarness(
     private var discoverServicesDeferred: CompletableDeferred<BluetoothPeripheral>? = null
     private var writeCharDeferred: CompletableDeferred<Pair<BluetoothCharacteristic, Boolean>>? = null
     private var readDescriptorDeferred: CompletableDeferred<BluetoothCharacteristicDescriptor>? = null
+    private var writeDescriptorDeferred: CompletableDeferred<BluetoothCharacteristicDescriptor>? = null
     private var mtuDeferred: CompletableDeferred<Int>? = null
     private var bondDeferred: CompletableDeferred<BlueFalconBondState>? = null
     private var l2capDeferred: CompletableDeferred<BluetoothSocket?>? = null
@@ -189,6 +190,27 @@ class BlueFalconTestHarness(
         readDescriptorDeferred!!.await()
     }
 
+    suspend fun writeDescriptorAndAwait(
+        peripheral: BluetoothPeripheral,
+        descriptor: BluetoothCharacteristicDescriptor,
+        value: ByteArray,
+        timeoutMs: Long = defaultTimeoutMs
+    ): BluetoothCharacteristicDescriptor = withTimeout(timeoutMs) {
+        writeDescriptorDeferred = CompletableDeferred()
+        falcon.writeDescriptor(peripheral, descriptor, value)
+        writeDescriptorDeferred!!.await()
+    }
+
+    suspend fun openL2capAndAwait(
+        peripheral: BluetoothPeripheral,
+        psm: Int,
+        timeoutMs: Long = defaultTimeoutMs
+    ): BluetoothSocket? = withTimeout(timeoutMs) {
+        l2capDeferred = CompletableDeferred()
+        falcon.openL2capChannel(peripheral, psm)
+        l2capDeferred!!.await()
+    }
+
     suspend fun changeMtuAndAwait(
         peripheral: BluetoothPeripheral,
         mtuSize: Int,
@@ -262,7 +284,7 @@ class BlueFalconTestHarness(
         bluetoothPeripheral: BluetoothPeripheral,
         state: BlueFalconBondState
     ) {
-        if (state == BlueFalconBondState.Bonded || state == BlueFalconBondState.None) {
+        if (state == BlueFalconBondState.Bonded) {
             bondDeferred?.complete(state)
         }
     }
@@ -285,6 +307,6 @@ class BlueFalconTestHarness(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
     ) {
-        // Available for future descriptor write tests
+        writeDescriptorDeferred?.complete(bluetoothCharacteristicDescriptor)
     }
 }

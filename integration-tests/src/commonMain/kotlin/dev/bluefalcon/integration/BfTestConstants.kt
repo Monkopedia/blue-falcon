@@ -15,9 +15,19 @@ object BfTestConstants {
 
     // Service 2: BF Secure Service
     const val SERVICE_2 = "0000bf20-1000-2000-8000-00805f9b34fb"
+    const val CHAR_G_ENCRYPTED = "0000bfb1-1000-2000-8000-00805f9b34fb"
+
+    // Descriptors
+    const val USER_DESCRIPTION = "00002901-0000-1000-8000-00805f9b34fb"
+
+    // L2CAP
+    const val L2CAP_PSM = 0x0080
 
     // Char A returns this fixed value
     val CHAR_A_EXPECTED = byteArrayOf(
         0xBF.toByte(), 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07
     )
+
+    // Char G returns this when bonded
+    val CHAR_G_EXPECTED = byteArrayOf(0x53, 0x45, 0x43, 0x55, 0x52, 0x45) // "SECURE"
 }
