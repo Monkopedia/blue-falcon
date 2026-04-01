@@ -29,6 +29,11 @@ kotlin.sourceSets.all {
 kotlin {
     jvmToolchain(17)
     androidTarget()
+    linuxX64 {
+        binaries.all {
+            linkerOpts("-L/usr/lib", "-lsystemd", "-lrt", "--allow-shlib-undefined")
+        }
+    }
 
     sourceSets {
         val commonMain by getting {

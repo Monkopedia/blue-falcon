@@ -70,6 +70,7 @@ actual class BlueFalcon actual constructor(
                 }
                 adapterProxy.setDiscoveryFilter(filterMap)
 
+                // Listen for newly discovered devices
                 scanJob = scope.launch {
                     objectManagerProxy.interfacesAdded.collect { event ->
                         if (event.interfaces.containsKey("org.bluez.Device1")) {
@@ -79,6 +80,14 @@ actual class BlueFalcon actual constructor(
                             )
                         }
                     }
+                }
+
+                // Report already-known devices from BlueZ cache
+                val managed = objectManagerProxy.getManagedObjects()
+                for ((path, interfaces) in managed) {
+                    if (!path.value.startsWith(adapterPath.value + "/dev_")) continue
+                    val devProps = interfaces["org.bluez.Device1"] ?: continue
+                    handleDeviceFound(path, devProps)
                 }
 
                 adapterProxy.startDiscovery()
