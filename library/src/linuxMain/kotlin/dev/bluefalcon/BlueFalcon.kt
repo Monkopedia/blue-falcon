@@ -24,6 +24,10 @@ actual class BlueFalcon actual constructor(
 ) {
     actual val scope = CoroutineScope(Dispatchers.Default)
     actual val delegates: MutableSet<BlueFalconDelegate> = mutableSetOf()
+
+    private fun notifyDelegates(action: (BlueFalconDelegate) -> Unit) {
+        delegates.toList().forEach(action)
+    }
     actual var isScanning: Boolean = false
 
     internal actual val _peripherals = MutableStateFlow<Set<BluetoothPeripheral>>(emptySet())
@@ -68,9 +72,17 @@ actual class BlueFalcon actual constructor(
                         filterMap["UUIDs"] = Variant(uuids)
                     }
                 }
-                adapterProxy.setDiscoveryFilter(filterMap)
+                try {
+                    adapterProxy.setDiscoveryFilter(filterMap)
+                } catch (e: Exception) {
+                    log?.debug("setDiscoveryFilter failed (may already be set): ${e.message}")
+                }
 
-                adapterProxy.startDiscovery()
+                try {
+                    adapterProxy.startDiscovery()
+                } catch (e: Exception) {
+                    log?.debug("startDiscovery failed (may already be discovering): ${e.message}")
+                }
 
                 // Poll GetManagedObjects to discover devices.
                 // InterfacesAdded signals are unreliable for devices that
@@ -79,13 +91,16 @@ actual class BlueFalcon actual constructor(
                     while (isScanning) {
                         try {
                             val managed = objectManagerProxy.getManagedObjects()
+                            var deviceCount = 0
                             for ((path, interfaces) in managed) {
                                 if (!path.value.startsWith(adapterPath.value + "/dev_")) continue
                                 val devProps = interfaces["org.bluez.Device1"] ?: continue
+                                deviceCount++
                                 handleDeviceFound(path, devProps)
                             }
+                            log?.debug("Scan poll: found $deviceCount devices")
                         } catch (e: Exception) {
-                            log?.debug("Scan poll error: ${e.message}")
+                            log?.error("Scan poll error: ${e.message}", e)
                         }
                         delay(1000)
                     }
@@ -155,7 +170,7 @@ actual class BlueFalcon actual constructor(
                 )
                 deviceProxy.disconnect()
                 propertiesListeners.remove(impl.device.objectPath)?.release()
-                delegates.forEach { it.didDisconnect(bluetoothPeripheral) }
+                notifyDelegates { it.didDisconnect(bluetoothPeripheral) }
             } catch (e: Exception) {
                 log?.error("Disconnect failed: ${e.message}", e)
             }
@@ -194,7 +209,7 @@ actual class BlueFalcon actual constructor(
         val impl = bluetoothPeripheral as BluetoothPeripheralImpl
         scope.launch {
             resolveGattObjects(impl)
-            delegates.forEach { it.didDiscoverServices(bluetoothPeripheral) }
+            notifyDelegates { it.didDiscoverServices(bluetoothPeripheral) }
         }
     }
 
@@ -203,7 +218,7 @@ actual class BlueFalcon actual constructor(
         bluetoothService: BluetoothService,
         characteristicUUIDs: List<Uuid>
     ) {
-        delegates.forEach { it.didDiscoverCharacteristics(bluetoothPeripheral) }
+        notifyDelegates { it.didDiscoverCharacteristics(bluetoothPeripheral) }
     }
 
     actual fun readCharacteristic(
@@ -217,7 +232,7 @@ actual class BlueFalcon actual constructor(
                 )
                 val value = charProxy.readValue(emptyMap())
                 bluetoothCharacteristic._value = value.toUByteArray().asByteArray()
-                delegates.forEach {
+                notifyDelegates {
                     it.didCharacteristcValueChanged(bluetoothPeripheral, bluetoothCharacteristic)
                 }
             } catch (e: Exception) {
@@ -268,12 +283,12 @@ actual class BlueFalcon actual constructor(
                 }
                 charProxy.writeValue(value.asUByteArray().toList(), options)
                 bluetoothCharacteristic._value = value
-                delegates.forEach {
+                notifyDelegates {
                     it.didWriteCharacteristic(bluetoothPeripheral, bluetoothCharacteristic, true)
                 }
             } catch (e: Exception) {
                 log?.error("Write failed: ${e.message}", e)
-                delegates.forEach {
+                notifyDelegates {
                     it.didWriteCharacteristic(bluetoothPeripheral, bluetoothCharacteristic, false)
                 }
             }
@@ -301,7 +316,7 @@ actual class BlueFalcon actual constructor(
                                     ?.toUByteArray()?.asByteArray()
                                 if (bytes != null) {
                                     bluetoothCharacteristic._value = bytes
-                                    delegates.forEach {
+                                    notifyDelegates {
                                         it.didCharacteristcValueChanged(
                                             bluetoothPeripheral, bluetoothCharacteristic
                                         )
@@ -318,7 +333,7 @@ actual class BlueFalcon actual constructor(
                     bluetoothCharacteristic._isNotifying = false
                     propertiesListeners.remove(bluetoothCharacteristic.objectPath)?.release()
                 }
-                delegates.forEach {
+                notifyDelegates {
                     it.didUpdateNotificationStateFor(bluetoothPeripheral, bluetoothCharacteristic)
                 }
             } catch (e: Exception) {
@@ -356,7 +371,7 @@ actual class BlueFalcon actual constructor(
                 )
                 val value = descProxy.readValue(emptyMap())
                 bluetoothCharacteristicDescriptor._value = value.toUByteArray().asByteArray()
-                delegates.forEach {
+                notifyDelegates {
                     it.didReadDescriptor(bluetoothPeripheral, bluetoothCharacteristicDescriptor)
                 }
             } catch (e: Exception) {
@@ -377,7 +392,7 @@ actual class BlueFalcon actual constructor(
                 )
                 descProxy.writeValue(value.asUByteArray().toList(), emptyMap())
                 bluetoothCharacteristicDescriptor._value = value
-                delegates.forEach {
+                notifyDelegates {
                     it.didWriteDescriptor(
                         bluetoothPeripheral as BluetoothPeripheralImpl,
                         bluetoothCharacteristicDescriptor
@@ -400,16 +415,16 @@ actual class BlueFalcon actual constructor(
                     )
                     impl.mtuSize = charProxy.mTU.toInt()
                 }
-                delegates.forEach { it.didUpdateMTU(bluetoothPeripheral, 0) }
+                notifyDelegates { it.didUpdateMTU(bluetoothPeripheral, 0) }
             } catch (e: Exception) {
                 log?.error("changeMTU failed: ${e.message}", e)
-                delegates.forEach { it.didUpdateMTU(bluetoothPeripheral, -1) }
+                notifyDelegates { it.didUpdateMTU(bluetoothPeripheral, -1) }
             }
         }
     }
 
     actual fun openL2capChannel(bluetoothPeripheral: BluetoothPeripheral, psm: Int) {
-        delegates.forEach { it.didOpenL2capChannel(bluetoothPeripheral, null) }
+        notifyDelegates { it.didOpenL2capChannel(bluetoothPeripheral, null) }
     }
 
     actual fun createBond(bluetoothPeripheral: BluetoothPeripheral) {
@@ -420,12 +435,12 @@ actual class BlueFalcon actual constructor(
                     createProxy(connection, bluezService, impl.device.objectPath)
                 )
                 deviceProxy.pair()
-                delegates.forEach {
+                notifyDelegates {
                     it.didBondStateChanged(bluetoothPeripheral, BlueFalconBondState.Bonded)
                 }
             } catch (e: Exception) {
                 log?.error("Pair failed: ${e.message}", e)
-                delegates.forEach {
+                notifyDelegates {
                     it.didBondStateChanged(bluetoothPeripheral, BlueFalconBondState.None)
                 }
             }
@@ -437,7 +452,7 @@ actual class BlueFalcon actual constructor(
         scope.launch {
             try {
                 adapterProxy.removeDevice(impl.device.objectPath)
-                delegates.forEach {
+                notifyDelegates {
                     it.didBondStateChanged(bluetoothPeripheral, BlueFalconBondState.None)
                 }
             } catch (e: Exception) {
@@ -447,11 +462,12 @@ actual class BlueFalcon actual constructor(
     }
 
     actual fun destroy() {
-        stopScanning()
-        propertiesListeners.values.forEach { it.release() }
-        propertiesListeners.clear()
-        runBlocking { connection.leaveEventLoop() }
         scope.cancel()
+        stopScanning()
+        val listeners = propertiesListeners.toMap()
+        propertiesListeners.clear()
+        listeners.values.forEach { try { it.release() } catch (_: Exception) {} }
+        runBlocking { connection.leaveEventLoop() }
     }
 
     // ---- Internal ----
@@ -470,7 +486,7 @@ actual class BlueFalcon actual constructor(
         val advData = mutableMapOf<AdvertisementDataRetrievalKeys, Any>()
         properties["Name"]?.let { advData[AdvertisementDataRetrievalKeys.LocalName] = it.get<String>() }
         advData[AdvertisementDataRetrievalKeys.IsConnectable] = 1
-        delegates.forEach { it.didDiscoverDevice(peripheral, advData) }
+        notifyDelegates { it.didDiscoverDevice(peripheral, advData) }
     }
 
     private fun handleDevicePropertyChanged(
@@ -479,23 +495,23 @@ actual class BlueFalcon actual constructor(
     ) {
         changed["Connected"]?.let { v ->
             if (v.get<Boolean>()) {
-                delegates.forEach { it.didConnect(peripheral) }
+                notifyDelegates { it.didConnect(peripheral) }
                 if (autoDiscoverAllServicesAndCharacteristics) {
                     scope.launch { waitForServicesResolved(peripheral) }
                 }
             } else {
-                delegates.forEach { it.didDisconnect(peripheral) }
+                notifyDelegates { it.didDisconnect(peripheral) }
             }
         }
         changed["RSSI"]?.let {
             peripheral.rssi = it.get<Short>().toFloat()
-            delegates.forEach { it.didRssiUpdate(peripheral) }
+            notifyDelegates { it.didRssiUpdate(peripheral) }
         }
         changed["ServicesResolved"]?.let { v ->
             if (v.get<Boolean>()) {
                 scope.launch {
                     resolveGattObjects(peripheral)
-                    delegates.forEach { it.didDiscoverServices(peripheral) }
+                    notifyDelegates { it.didDiscoverServices(peripheral) }
                 }
             }
         }
@@ -508,7 +524,7 @@ actual class BlueFalcon actual constructor(
             )
             if (deviceProxy.servicesResolved) {
                 resolveGattObjects(peripheral)
-                delegates.forEach { it.didDiscoverServices(peripheral) }
+                notifyDelegates { it.didDiscoverServices(peripheral) }
             }
         } catch (e: Exception) {
             log?.error("waitForServicesResolved failed: ${e.message}", e)
