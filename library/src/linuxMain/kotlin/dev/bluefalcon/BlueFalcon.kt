@@ -170,10 +170,11 @@ actual class BlueFalcon actual constructor(
                 )
                 deviceProxy.disconnect()
                 propertiesListeners.remove(impl.device.objectPath)?.release()
-                notifyDelegates { it.didDisconnect(bluetoothPeripheral) }
             } catch (e: Exception) {
                 log?.error("Disconnect failed: ${e.message}", e)
             }
+            // Always notify even if disconnect threw — the connection is dead
+            notifyDelegates { it.didDisconnect(bluetoothPeripheral) }
         }
     }
 
@@ -462,11 +463,16 @@ actual class BlueFalcon actual constructor(
     }
 
     actual fun destroy() {
-        scope.cancel()
-        stopScanning()
+        // Stop scanning first (cancels scan coroutine)
+        isScanning = false
+        scanJob?.cancel()
+        scanJob = null
+        // Release listeners before closing connection
         val listeners = propertiesListeners.toMap()
         propertiesListeners.clear()
         listeners.values.forEach { try { it.release() } catch (_: Exception) {} }
+        // Cancel remaining coroutines and close D-Bus connection
+        scope.cancel()
         runBlocking { connection.leaveEventLoop() }
     }
 
