@@ -26,6 +26,7 @@ class BlueFalconTestHarness(
     private var bondDeferred: CompletableDeferred<BlueFalconBondState>? = null
     private var l2capDeferred: CompletableDeferred<BluetoothSocket?>? = null
     private var notifyStateDeferred: CompletableDeferred<BluetoothCharacteristic>? = null
+    private var notifyStateTargetUuid: Uuid? = null
 
     private val charValueChannel = Channel<Pair<BluetoothPeripheral, BluetoothCharacteristic>>(Channel.BUFFERED)
     private val scanChannel = Channel<Pair<BluetoothPeripheral, Map<AdvertisementDataRetrievalKeys, Any>>>(Channel.BUFFERED)
@@ -125,7 +126,7 @@ class BlueFalconTestHarness(
         characteristic: BluetoothCharacteristic,
         timeoutMs: Long = defaultTimeoutMs
     ) = withTimeout(timeoutMs) {
-        while (charValueChannel.tryReceive().isSuccess) { /* drain stale values */ }
+        notifyStateTargetUuid = characteristic.uuid
         notifyStateDeferred = CompletableDeferred()
         falcon.notifyCharacteristic(peripheral, characteristic, true)
         notifyStateDeferred!!.await()
@@ -143,7 +144,7 @@ class BlueFalconTestHarness(
         characteristic: BluetoothCharacteristic,
         timeoutMs: Long = defaultTimeoutMs
     ) = withTimeout(timeoutMs) {
-        while (charValueChannel.tryReceive().isSuccess) { /* drain stale values */ }
+        notifyStateTargetUuid = characteristic.uuid
         notifyStateDeferred = CompletableDeferred()
         falcon.indicateCharacteristic(peripheral, characteristic, true)
         notifyStateDeferred!!.await()
@@ -248,7 +249,10 @@ class BlueFalconTestHarness(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
     ) {
-        notifyStateDeferred?.complete(bluetoothCharacteristic)
+        val target = notifyStateTargetUuid
+        if (target == null || bluetoothCharacteristic.uuid == target) {
+            notifyStateDeferred?.complete(bluetoothCharacteristic)
+        }
     }
 
     override fun didUpdateMTU(bluetoothPeripheral: BluetoothPeripheral, status: Int) {
