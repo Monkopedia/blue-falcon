@@ -125,6 +125,7 @@ class BlueFalconTestHarness(
         characteristic: BluetoothCharacteristic,
         timeoutMs: Long = defaultTimeoutMs
     ) = withTimeout(timeoutMs) {
+        while (charValueChannel.tryReceive().isSuccess) { /* drain stale values */ }
         notifyStateDeferred = CompletableDeferred()
         falcon.notifyCharacteristic(peripheral, characteristic, true)
         notifyStateDeferred!!.await()
@@ -142,6 +143,7 @@ class BlueFalconTestHarness(
         characteristic: BluetoothCharacteristic,
         timeoutMs: Long = defaultTimeoutMs
     ) = withTimeout(timeoutMs) {
+        while (charValueChannel.tryReceive().isSuccess) { /* drain stale values */ }
         notifyStateDeferred = CompletableDeferred()
         falcon.indicateCharacteristic(peripheral, characteristic, true)
         notifyStateDeferred!!.await()

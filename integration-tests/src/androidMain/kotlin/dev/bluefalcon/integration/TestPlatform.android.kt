@@ -1,17 +1,33 @@
 package dev.bluefalcon.integration
 
 import android.app.Application
+import android.os.ParcelUuid
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.bluefalcon.*
 
 actual fun createBlueFalcon(): BlueFalcon {
     val appContext = InstrumentationRegistry.getInstrumentation()
         .targetContext.applicationContext as Application
-    return BlueFalcon(context = appContext, autoDiscoverAllServicesAndCharacteristics = true)
+    return BlueFalcon(log = PrintLnLogger, context = appContext, autoDiscoverAllServicesAndCharacteristics = true)
 }
 
 @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
 actual fun uuidFrom(string: String): Uuid = kotlin.uuid.Uuid.parse(string)
+
+actual suspend fun scanForBfTestDevice(harness: BlueFalconTestHarness): BluetoothPeripheral {
+    return harness.scanForDevice(filters = emptyList(), timeoutMs = 20_000L) { device, _ ->
+        device.name == BfTestConstants.DEVICE_NAME
+    }
+}
+
+actual fun ensureForeground() {
+    val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+    val intent = android.content.Intent(context, BleTestActivity::class.java).apply {
+        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    context.startActivity(intent)
+    Thread.sleep(1000)
+}
 
 actual fun falcon_writeNoResponse(
     falcon: BlueFalcon,
@@ -19,6 +35,5 @@ actual fun falcon_writeNoResponse(
     characteristic: BluetoothCharacteristic,
     value: ByteArray
 ) {
-    // Android WRITE_TYPE_NO_RESPONSE = 2
     falcon.writeCharacteristicWithoutEncoding(peripheral, characteristic, value, writeType = 2)
 }

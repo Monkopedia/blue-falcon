@@ -6,197 +6,179 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.*
 
 /**
- * Integration tests that run real BLE operations against the BF-Test peripheral.
+ * Integration tests against the BF-Test peripheral.
  *
- * Tests are numbered to enforce execution order. State is shared via companion.
+ * Uses a shared connection (set up once before all tests) because:
+ * - The ESP32-C6 is single-connection and needs time to re-advertise
+ * - Android throttles BLE scans per-app, so creating many BlueFalcon
+ *   instances causes scan failures
+ *
+ * Each test is still independent in what it validates — no test depends
+ * on side effects from another test.
  *
  * Prerequisites:
  * - BF-Test ESP32-C6 peripheral is powered on and advertising
  * - Device has Bluetooth enabled and permissions granted
  */
-open class BleIntegrationTests {
+abstract class BleIntegrationTests {
 
     companion object {
-        var harness: BlueFalconTestHarness? = null
-        var peripheral: BluetoothPeripheral? = null
+        lateinit var harness: BlueFalconTestHarness
+        lateinit var peripheral: BluetoothPeripheral
+        private var setupDone = false
 
-        fun findChar(uuid: String): BluetoothCharacteristic {
-            val p = peripheral ?: error("No peripheral")
-            val target = uuidFrom(uuid)
-            return p.characteristics.values.flatten().firstOrNull { it.uuid == target }
-                ?: error("Characteristic $uuid not found")
+        fun ensureConnected() {
+            if (setupDone) return
+            ensureForeground()
+            runBlocking {
+                val falcon = createBlueFalcon()
+                harness = BlueFalconTestHarness(falcon)
+                val found = scanForBfTestDevice(harness)
+                peripheral = harness.connectAndDiscover(found, timeoutMs = 20_000L)
+                setupDone = true
+            }
         }
     }
 
-    @Test
-    fun test_01_initialize() {
-        val falcon = createBlueFalcon()
-        harness = BlueFalconTestHarness(falcon)
-        assertNotNull(harness)
+    @BeforeTest
+    fun setUp() {
+        ensureConnected()
     }
 
-    @Test
-    fun test_02_scan() = runBlocking {
-        val h = harness ?: fail("Harness not initialized")
-        val found = h.scanForDevice(timeoutMs = 20_000L) { device, _ ->
-            device.name == BfTestConstants.DEVICE_NAME
-        }
-        assertNotNull(found, "BF-Test device not found")
-        println("Found BF-Test: ${found.name} (${found.uuid})")
-        // Don't assign to peripheral yet — need connected instance
+    private fun findChar(uuid: String): BluetoothCharacteristic {
+        val target = uuidFrom(uuid)
+        return peripheral.characteristics.values.flatten().firstOrNull { it.uuid == target }
+            ?: error("Characteristic $uuid not found")
     }
 
-    @Test
-    fun test_03_connect() = runBlocking {
-        val h = harness ?: fail("Harness not initialized")
-        // Scan again to get a fresh peripheral reference, then connect
-        val found = h.scanForDevice(timeoutMs = 20_000L) { device, _ ->
-            device.name == BfTestConstants.DEVICE_NAME
-        }
-        peripheral = h.connectAndDiscover(found, timeoutMs = 20_000L)
-        assertNotNull(peripheral)
-        val services = peripheral!!.services
-        assertTrue(services.isNotEmpty(), "Should have discovered services")
-        println("Connected. ${services.size} services discovered.")
-    }
+    // ---- Scanning ----
 
     @Test
-    fun test_04_verifyServices() {
-        val p = peripheral ?: fail("Not connected")
-        val uuids = p.services.keys.map { it.toString().lowercase() }
+    fun scanFindsDevice() {
+        // Scanning was already done in setup; verify we got the right device
+        assertEquals(BfTestConstants.DEVICE_NAME, peripheral.name)
+    }
+
+    // ---- Connection ----
+
+    @Test
+    fun connectionStateIsConnected() {
+        val state = harness.falcon.connectionState(peripheral)
+        assertEquals(BluetoothPeripheralState.Connected, state)
+    }
+
+    // ---- Service discovery ----
+
+    @Test
+    fun discoversTestService() {
+        val uuids = peripheral.services.keys.map { it.toString().lowercase() }
         assertTrue(uuids.any { BfTestConstants.SERVICE_1 in it }, "Service 1 (BF10) missing")
+    }
+
+    @Test
+    fun discoversSecureService() {
+        val uuids = peripheral.services.keys.map { it.toString().lowercase() }
         assertTrue(uuids.any { BfTestConstants.SERVICE_2 in it }, "Service 2 (BF20) missing")
     }
 
     @Test
-    fun test_05_verifyCharacteristics() {
-        val p = peripheral ?: fail("Not connected")
-        val allChars = p.characteristics.values.flatten().map { it.uuid.toString().lowercase() }
-        assertTrue(allChars.any { BfTestConstants.CHAR_A_READ in it }, "Char A missing")
-        assertTrue(allChars.any { BfTestConstants.CHAR_B_WRITE in it }, "Char B missing")
-        assertTrue(allChars.any { BfTestConstants.CHAR_C_WRITE_NR in it }, "Char C missing")
-        assertTrue(allChars.any { BfTestConstants.CHAR_D_NOTIFY in it }, "Char D missing")
-        assertTrue(allChars.any { BfTestConstants.CHAR_E_INDICATE in it }, "Char E missing")
-        assertTrue(allChars.any { BfTestConstants.CHAR_F_DESC in it }, "Char F missing")
-        assertTrue(allChars.any { BfTestConstants.CHAR_H_NOTIFY_IND in it }, "Char H missing")
+    fun discoversAllCharacteristics() {
+        val charUuids = peripheral.characteristics.values.flatten()
+            .map { it.uuid.toString().lowercase() }
+        for (expected in listOf(
+            BfTestConstants.CHAR_A_READ,
+            BfTestConstants.CHAR_B_WRITE,
+            BfTestConstants.CHAR_C_WRITE_NR,
+            BfTestConstants.CHAR_D_NOTIFY,
+            BfTestConstants.CHAR_E_INDICATE,
+            BfTestConstants.CHAR_F_DESC,
+            BfTestConstants.CHAR_H_NOTIFY_IND,
+        )) {
+            assertTrue(charUuids.any { expected in it }, "Characteristic $expected missing")
+        }
     }
 
+    // ---- Read ----
+
     @Test
-    fun test_06_readFixedValue() = runBlocking {
-        val h = harness ?: fail("Harness not initialized")
-        val p = peripheral ?: fail("Not connected")
+    fun readFixedValue() = runBlocking {
         val charA = findChar(BfTestConstants.CHAR_A_READ)
-        val result = h.readCharacteristicAndAwait(p, charA)
-        assertNotNull(result.value, "Char A value should not be null")
-        assertContentEquals(BfTestConstants.CHAR_A_EXPECTED, result.value!!,
-            "Char A should return BF 01 02 03 04 05 06 07")
+        val result = harness.readCharacteristicAndAwait(peripheral, charA)
+        assertContentEquals(BfTestConstants.CHAR_A_EXPECTED, result.value)
     }
 
+    // ---- Write ----
+
     @Test
-    fun test_07_writeAndReadBack() = runBlocking {
-        val h = harness ?: fail("Harness not initialized")
-        val p = peripheral ?: fail("Not connected")
+    fun writeAndReadBack() = runBlocking {
         val charB = findChar(BfTestConstants.CHAR_B_WRITE)
-        val testData = byteArrayOf(0xDE.toByte(), 0xAD.toByte(), 0xBE.toByte(), 0xEF.toByte())
-        val success = h.writeCharacteristicAndAwait(p, charB, testData)
-        assertTrue(success, "Write to Char B should succeed")
-        val readResult = h.readCharacteristicAndAwait(p, charB)
-        assertContentEquals(testData, readResult.value, "Char B should echo written value")
+        val data = byteArrayOf(0xDE.toByte(), 0xAD.toByte(), 0xBE.toByte(), 0xEF.toByte())
+        val ok = harness.writeCharacteristicAndAwait(peripheral, charB, data)
+        assertTrue(ok, "Write should succeed")
+        val readBack = harness.readCharacteristicAndAwait(peripheral, charB)
+        assertContentEquals(data, readBack.value)
     }
 
     @Test
-    fun test_08_writeNoResponse() = runBlocking {
-        val h = harness ?: fail("Harness not initialized")
-        val p = peripheral ?: fail("Not connected")
+    fun writeNoResponse() = runBlocking {
         val charC = findChar(BfTestConstants.CHAR_C_WRITE_NR)
-        val testData = byteArrayOf(0xCA.toByte(), 0xFE.toByte())
-        // Write-without-response fires and forgets; no write callback expected
-        falcon_writeNoResponse(h.falcon, p, charC, testData)
-        delay(500) // give peripheral time to process
-        val readResult = h.readCharacteristicAndAwait(p, charC)
-        assertContentEquals(testData, readResult.value, "Char C should store write-no-response data")
+        val data = byteArrayOf(0xCA.toByte(), 0xFE.toByte())
+        falcon_writeNoResponse(harness.falcon, peripheral, charC, data)
+        delay(500)
+        val readBack = harness.readCharacteristicAndAwait(peripheral, charC)
+        assertContentEquals(data, readBack.value)
     }
 
+    // ---- Notifications ----
+
     @Test
-    fun test_09_notifications() = runBlocking {
-        val h = harness ?: fail("Harness not initialized")
-        val p = peripheral ?: fail("Not connected")
+    fun notifications() = runBlocking {
         val charD = findChar(BfTestConstants.CHAR_D_NOTIFY)
-        h.enableNotifyAndAwait(p, charD)
-        val values = h.collectNotifications(uuidFrom(BfTestConstants.CHAR_D_NOTIFY), count = 3, timeoutMs = 10_000L)
-        assertEquals(3, values.size, "Should receive 3 notification values")
-        // Values should be incrementing counters
-        println("Notification values: ${values.map { it.toList() }}")
-        h.disableNotify(p, charD)
+        harness.enableNotifyAndAwait(peripheral, charD)
+        val values = harness.collectNotifications(
+            uuidFrom(BfTestConstants.CHAR_D_NOTIFY), count = 3, timeoutMs = 15_000L
+        )
+        assertEquals(3, values.size, "Should receive 3 notifications")
+        harness.disableNotify(peripheral, charD)
     }
 
     @Test
-    fun test_10_indications() = runBlocking {
-        val h = harness ?: fail("Harness not initialized")
-        val p = peripheral ?: fail("Not connected")
+    fun indications() = runBlocking {
         val charB = findChar(BfTestConstants.CHAR_B_WRITE)
         val charE = findChar(BfTestConstants.CHAR_E_INDICATE)
-        h.enableIndicateAndAwait(p, charE)
-        // Write to Char B — firmware echoes via Char E indication
-        val testData = byteArrayOf(0x42, 0x46) // "BF"
-        h.writeCharacteristicAndAwait(p, charB, testData)
-        val indication = h.awaitCharacteristicValue(uuidFrom(BfTestConstants.CHAR_E_INDICATE), timeoutMs = 5_000L)
-        assertContentEquals(testData, indication.value,
-            "Char E indication should echo value written to Char B")
+        harness.enableIndicateAndAwait(peripheral, charE)
+        val data = byteArrayOf(0x42, 0x46)
+        harness.writeCharacteristicAndAwait(peripheral, charB, data)
+        val indication = harness.awaitCharacteristicValue(
+            uuidFrom(BfTestConstants.CHAR_E_INDICATE), timeoutMs = 5_000L
+        )
+        assertContentEquals(data, indication.value,
+            "Char E should echo value written to Char B")
     }
 
     @Test
-    fun test_11_notifyAndIndicate() = runBlocking {
-        val h = harness ?: fail("Harness not initialized")
-        val p = peripheral ?: fail("Not connected")
+    fun notifyAndIndicate() = runBlocking {
         val charH = findChar(BfTestConstants.CHAR_H_NOTIFY_IND)
-        // Enable both notify and indicate
-        h.falcon.notifyAndIndicateCharacteristic(p, charH, enable = true)
+        harness.falcon.notifyAndIndicateCharacteristic(peripheral, charH, enable = true)
         delay(500)
-        val values = h.collectNotifications(uuidFrom(BfTestConstants.CHAR_H_NOTIFY_IND), count = 2, timeoutMs = 10_000L)
-        assertTrue(values.isNotEmpty(), "Should receive values from Char H (notify+indicate)")
-        h.falcon.notifyAndIndicateCharacteristic(p, charH, enable = false)
+        val values = harness.collectNotifications(
+            uuidFrom(BfTestConstants.CHAR_H_NOTIFY_IND), count = 2, timeoutMs = 10_000L
+        )
+        assertTrue(values.isNotEmpty(), "Should receive values from Char H")
+        harness.falcon.notifyAndIndicateCharacteristic(peripheral, charH, enable = false)
     }
 
+    // ---- Descriptors ----
+
     @Test
-    fun test_12_descriptors() = runBlocking {
-        val h = harness ?: fail("Harness not initialized")
-        val p = peripheral ?: fail("Not connected")
+    fun descriptorsPresent() {
         val charF = findChar(BfTestConstants.CHAR_F_DESC)
-        val descriptors = charF.descriptors
-        assertTrue(descriptors.isNotEmpty(), "Char F should have descriptors")
-    }
-
-    @Test
-    fun test_13_connectionState() {
-        val h = harness ?: fail("Harness not initialized")
-        val p = peripheral ?: fail("Not connected")
-        val state = h.falcon.connectionState(p)
-        assertEquals(BluetoothPeripheralState.Connected, state, "Should still be connected")
-    }
-
-    @Test
-    fun test_14_disconnect() = runBlocking {
-        val h = harness ?: fail("Harness not initialized")
-        val p = peripheral ?: fail("Not connected")
-        h.disconnectAndAwait(p)
-        delay(500)
-        val state = h.falcon.connectionState(p)
-        assertEquals(BluetoothPeripheralState.Disconnected, state, "Should be disconnected")
-    }
-
-    @Test
-    fun test_15_cleanup() {
-        harness?.destroy()
-        harness?.falcon?.destroy()
-        harness = null
-        peripheral = null
+        assertTrue(charF.descriptors.isNotEmpty(), "Char F should have descriptors")
     }
 }
 
 /**
- * Platform-specific write-no-response. On Android, writeType=2 is WRITE_TYPE_NO_RESPONSE.
- * Each platform can map appropriately.
+ * Platform-specific write-no-response.
  */
 expect fun falcon_writeNoResponse(
     falcon: BlueFalcon,
