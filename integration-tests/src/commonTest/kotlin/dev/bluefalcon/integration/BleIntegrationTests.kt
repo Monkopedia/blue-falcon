@@ -20,7 +20,7 @@ import kotlin.test.*
  * - BF-Test ESP32-C6 peripheral is powered on and advertising
  * - Device has Bluetooth enabled and permissions granted
  */
-abstract class BleIntegrationTests {
+class BleIntegrationTests {
 
     companion object {
         lateinit var harness: BlueFalconTestHarness
@@ -29,7 +29,7 @@ abstract class BleIntegrationTests {
 
         fun ensureConnected() {
             if (setupDone) return
-            ensureForeground()
+            ensurePlatformReady()
             runBlocking {
                 val falcon = createBlueFalcon()
                 harness = BlueFalconTestHarness(falcon)

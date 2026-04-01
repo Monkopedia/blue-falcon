@@ -35,16 +35,18 @@ kotlin {
             dependencies {
                 implementation("dev.bluefalcon:blue-falcon:2.5.4")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
-                implementation(kotlin("test"))
-                implementation(kotlin("test-annotations-common"))
             }
         }
-        val androidMain by getting {
+        val commonTest by getting {
+            dependencies {
+                implementation(kotlin("test"))
+            }
+        }
+        val androidInstrumentedTest by getting {
+            dependsOn(commonTest)
             dependencies {
                 implementation(kotlin("test-junit"))
                 implementation("androidx.test:runner:1.5.2")
-                implementation("androidx.test:rules:1.5.0")
-                implementation("androidx.test.ext:junit:1.1.5")
             }
         }
     }

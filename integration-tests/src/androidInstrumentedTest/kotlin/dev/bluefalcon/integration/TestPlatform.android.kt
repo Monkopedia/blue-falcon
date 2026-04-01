@@ -20,8 +20,21 @@ actual suspend fun scanForBfTestDevice(harness: BlueFalconTestHarness): Bluetoot
     }
 }
 
-actual fun ensureForeground() {
-    val context = InstrumentationRegistry.getInstrumentation().targetContext
+actual fun ensurePlatformReady() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val uiAutomation = instrumentation.uiAutomation
+
+    // Grant BLE permissions
+    for (perm in listOf(
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION",
+    )) {
+        uiAutomation.grantRuntimePermission(instrumentation.targetContext.packageName, perm)
+    }
+
+    // Launch foreground activity (Android throttles background BLE scans)
+    val context = instrumentation.targetContext
     val intent = Intent(context, BleTestActivity::class.java).apply {
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }

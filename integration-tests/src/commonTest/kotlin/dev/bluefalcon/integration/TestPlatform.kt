@@ -14,5 +14,5 @@ expect fun uuidFrom(string: String): Uuid
  */
 expect suspend fun scanForBfTestDevice(harness: BlueFalconTestHarness): BluetoothPeripheral
 
-/** Platform hook to ensure the test is in the foreground (needed for Android BLE scans). */
-expect fun ensureForeground()
+/** Platform hook for any setup needed before BLE tests (permissions, foreground, etc). */
+expect fun ensurePlatformReady()
