@@ -1,7 +1,7 @@
 package dev.bluefalcon.integration
 
 import android.app.Application
-import android.os.ParcelUuid
+import android.content.Intent
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.bluefalcon.*
 
@@ -21,15 +21,15 @@ actual suspend fun scanForBfTestDevice(harness: BlueFalconTestHarness): Bluetoot
 }
 
 actual fun ensureForeground() {
-    val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
-    val intent = android.content.Intent(context, BleTestActivity::class.java).apply {
-        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    val intent = Intent(context, BleTestActivity::class.java).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     context.startActivity(intent)
     Thread.sleep(1000)
 }
 
-actual fun falcon_writeNoResponse(
+actual fun writeNoResponse(
     falcon: BlueFalcon,
     peripheral: BluetoothPeripheral,
     characteristic: BluetoothCharacteristic,

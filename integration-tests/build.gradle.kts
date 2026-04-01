@@ -47,14 +47,5 @@ kotlin {
                 implementation("androidx.test.ext:junit:1.1.5")
             }
         }
-        val androidInstrumentedTest by getting {
-            dependencies {
-                implementation("androidx.test:runner:1.5.2")
-                implementation("androidx.test:rules:1.5.0")
-                implementation("androidx.test.ext:junit:1.1.5")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-                implementation(kotlin("test-junit"))
-            }
-        }
     }
 }

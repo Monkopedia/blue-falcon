@@ -51,11 +51,10 @@ abstract class BleIntegrationTests {
             ?: error("Characteristic $uuid not found")
     }
 
-    // ---- Scanning ----
+    // ---- Device identity ----
 
     @Test
-    fun scanFindsDevice() {
-        // Scanning was already done in setup; verify we got the right device
+    fun connectedDeviceIsBfTest() {
         assertEquals(BfTestConstants.DEVICE_NAME, peripheral.name)
     }
 
@@ -123,7 +122,7 @@ abstract class BleIntegrationTests {
     fun writeNoResponse() = runBlocking {
         val charC = findChar(BfTestConstants.CHAR_C_WRITE_NR)
         val data = byteArrayOf(0xCA.toByte(), 0xFE.toByte())
-        falcon_writeNoResponse(harness.falcon, peripheral, charC, data)
+        writeNoResponse(harness.falcon, peripheral, charC, data)
         delay(500)
         val readBack = harness.readCharacteristicAndAwait(peripheral, charC)
         assertContentEquals(data, readBack.value)
@@ -181,7 +180,7 @@ abstract class BleIntegrationTests {
 /**
  * Platform-specific write-no-response.
  */
-expect fun falcon_writeNoResponse(
+expect fun writeNoResponse(
     falcon: BlueFalcon,
     peripheral: BluetoothPeripheral,
     characteristic: BluetoothCharacteristic,

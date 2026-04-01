@@ -13,4 +13,6 @@ pluginManagement {
     }
 }
 
+// The blue-falcon library must be published to mavenLocal before building:
+//   cd ../library && ./gradlew publishToMavenLocal
 rootProject.name = "bf-integration-tests"

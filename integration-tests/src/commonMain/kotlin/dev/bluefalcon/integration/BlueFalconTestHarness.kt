@@ -21,7 +21,6 @@ class BlueFalconTestHarness(
     private var discoverServicesDeferred: CompletableDeferred<BluetoothPeripheral>? = null
     private var writeCharDeferred: CompletableDeferred<Pair<BluetoothCharacteristic, Boolean>>? = null
     private var readDescriptorDeferred: CompletableDeferred<BluetoothCharacteristicDescriptor>? = null
-    private var writeDescriptorDeferred: CompletableDeferred<BluetoothCharacteristicDescriptor>? = null
     private var mtuDeferred: CompletableDeferred<Int>? = null
     private var bondDeferred: CompletableDeferred<BlueFalconBondState>? = null
     private var l2capDeferred: CompletableDeferred<BluetoothSocket?>? = null
@@ -286,6 +285,6 @@ class BlueFalconTestHarness(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristicDescriptor: BluetoothCharacteristicDescriptor
     ) {
-        writeDescriptorDeferred?.complete(bluetoothCharacteristicDescriptor)
+        // Available for future descriptor write tests
     }
 }
