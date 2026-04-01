@@ -137,16 +137,10 @@ actual class BlueFalcon actual constructor(
                 propertiesListeners[impl.device.objectPath] = listener
 
                 if (deviceProxy.connected) {
-                    // Already connected (e.g. from a previous process)
-                    log?.info("Already connected to ${impl.uuid}")
-                    delegates.forEach { it.didConnect(impl) }
-                    if (autoDiscoverAllServicesAndCharacteristics) {
-                        if (deviceProxy.servicesResolved) {
-                            resolveGattObjects(impl)
-                            delegates.forEach { it.didDiscoverServices(impl) }
-                        }
-                    }
-                    return@launch
+                    // Disconnect stale connection from a previous process
+                    log?.info("Disconnecting stale connection to ${impl.uuid}")
+                    deviceProxy.disconnect()
+                    delay(1000) // Let the peripheral start re-advertising
                 }
 
                 deviceProxy.connect()
