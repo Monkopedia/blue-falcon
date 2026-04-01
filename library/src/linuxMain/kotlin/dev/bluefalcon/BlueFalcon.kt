@@ -123,6 +123,7 @@ actual class BlueFalcon actual constructor(
                     createProxy(connection, bluezService, impl.device.objectPath)
                 )
 
+                // Set up property change listener
                 val listener = deviceProxy.proxy.onSignal(
                     InterfaceName("org.freedesktop.DBus.Properties"),
                     SignalName("PropertiesChanged")
@@ -134,6 +135,19 @@ actual class BlueFalcon actual constructor(
                     }
                 }
                 propertiesListeners[impl.device.objectPath] = listener
+
+                if (deviceProxy.connected) {
+                    // Already connected (e.g. from a previous process)
+                    log?.info("Already connected to ${impl.uuid}")
+                    delegates.forEach { it.didConnect(impl) }
+                    if (autoDiscoverAllServicesAndCharacteristics) {
+                        if (deviceProxy.servicesResolved) {
+                            resolveGattObjects(impl)
+                            delegates.forEach { it.didDiscoverServices(impl) }
+                        }
+                    }
+                    return@launch
+                }
 
                 deviceProxy.connect()
             } catch (e: Exception) {

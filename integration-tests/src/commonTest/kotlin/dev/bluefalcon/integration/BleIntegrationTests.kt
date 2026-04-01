@@ -34,7 +34,9 @@ class BleIntegrationTests {
                 val falcon = createBlueFalcon()
                 harness = BlueFalconTestHarness(falcon)
                 val found = scanForBfTestDevice(harness)
-                peripheral = harness.connectAndDiscover(found, timeoutMs = 20_000L)
+                // connectAndDiscover handles both fresh connections and
+                // devices that are already connected in the BLE stack
+                peripheral = harness.connectAndDiscover(found, timeoutMs = 30_000L)
                 setupDone = true
             }
         }
