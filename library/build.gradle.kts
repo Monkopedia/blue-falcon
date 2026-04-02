@@ -123,6 +123,7 @@ sdbus {
     sources.srcDirs("src/dbusMain")
     outputs.add("linuxMain")
     generateProxies = true
+    generateAdapters = true
     outputPackage = "dev.bluefalcon.bluez"
 }
 

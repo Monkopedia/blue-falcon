@@ -197,8 +197,10 @@ class BleIntegrationTests {
         assertEquals(0, status, "MTU change should succeed (status 0 = GATT_SUCCESS)")
     }
 
-    // TODO: Bonding requires Agent1 registration via sdbus-kotlin
-    //  createObject/addVTable, which currently NPEs. See sdbus-kotlin TODO.
+    // TODO: Bonding — Agent1 registration now works (NoInputNoOutputAgent),
+    //  but Device1.Pair() still fails with AuthenticationFailed on BlueZ 5.86.
+    //  The "No matching connection for device" error in bluetoothd suggests
+    //  a BlueZ or adapter issue, not a blue-falcon bug.
     //
     // TODO: L2CAP CoC not exposed via BlueZ D-Bus API.
     //  Android's createL2capChannel requires encryption.

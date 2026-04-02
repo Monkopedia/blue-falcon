@@ -6,6 +6,7 @@ import com.monkopedia.sdbus.Resource
 import com.monkopedia.sdbus.ServiceName
 import com.monkopedia.sdbus.SignalName
 import com.monkopedia.sdbus.Variant
+import com.monkopedia.sdbus.createObject
 import com.monkopedia.sdbus.createProxy
 import com.monkopedia.sdbus.createSystemBusConnection
 import com.monkopedia.sdbus.onSignal
@@ -43,6 +44,7 @@ actual class BlueFalcon actual constructor(
     private val knownPeripherals = mutableMapOf<ObjectPath, BluetoothPeripheralImpl>()
     private val propertiesListeners = mutableMapOf<ObjectPath, Resource>()
     private var scanJob: Job? = null
+    private val agentPath = ObjectPath("/dev/bluefalcon/agent")
 
     init {
         adapterProxy = Adapter1Proxy(
@@ -52,11 +54,25 @@ actual class BlueFalcon actual constructor(
             createProxy(connection, bluezService, bluezRoot)
         )
         connection.enterEventLoopAsync()
+        try {
+            registerAgent()
+        } catch (e: Exception) {
+            log?.error("Failed to register pairing agent: ${e.message}", e)
+        }
     }
 
-    // TODO: Agent1 registration for pairing — createObject + addVTable NPEs
-    // in sdbus-kotlin. See ../sdbus-kotlin/TODO.md. Without an agent,
-    // Device1.Pair() always fails with AuthenticationFailed.
+    private fun registerAgent() {
+        val agent = NoInputNoOutputAgent(createObject(connection, agentPath))
+        agent.register()
+        val agentManager = AgentManager1Proxy(
+            createProxy(connection, bluezService, ObjectPath("/org/bluez"))
+        )
+        runBlocking {
+            agentManager.registerAgent(agentPath, "NoInputNoOutput")
+            agentManager.requestDefaultAgent(agentPath)
+        }
+        log?.info("Registered NoInputNoOutput pairing agent")
+    }
 
     actual fun scan(filters: List<ServiceFilter>) {
         log?.info("Scan started with filters: $filters")
