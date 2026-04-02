@@ -197,14 +197,14 @@ class BleIntegrationTests {
         assertEquals(0, status, "MTU change should succeed (status 0 = GATT_SUCCESS)")
     }
 
-    // TODO: Bonding test disrupts the shared connection on Android.
-    //  createBond triggers re-encryption which makes the GATT connection
-    //  unreliable for subsequent tests. Needs investigation — may require
-    //  a separate connection or running last.
+    // TODO: Bonding — BlueZ 5.86 on adolin fails to pair with ESP32-C6
+    //  ("No matching connection for device"). Works on Android. Needs
+    //  investigation — may require registering an Agent1 via D-Bus,
+    //  or may be a BlueZ/adapter compatibility issue.
     //
-    // TODO: L2CAP test fails — Android's createL2capChannel requires an
-    //  encrypted link and may not work with the ESP32-C6's CoC server.
-    //  blue-falcon may need createInsecureL2capChannel support.
+    // TODO: L2CAP CoC not exposed via BlueZ D-Bus API.
+    //  Android's createL2capChannel requires encryption.
+    //  blue-falcon may need platform-specific L2CAP support.
 
     // ---- Cleanup ----
     // Named with zz_ prefix to ensure it runs last (alphabetical ordering)
