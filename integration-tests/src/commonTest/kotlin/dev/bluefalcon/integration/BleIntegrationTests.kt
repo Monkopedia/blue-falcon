@@ -197,10 +197,8 @@ class BleIntegrationTests {
         assertEquals(0, status, "MTU change should succeed (status 0 = GATT_SUCCESS)")
     }
 
-    // TODO: Bonding — BlueZ 5.86 on adolin fails to pair with ESP32-C6
-    //  ("No matching connection for device"). Works on Android. Needs
-    //  investigation — may require registering an Agent1 via D-Bus,
-    //  or may be a BlueZ/adapter compatibility issue.
+    // TODO: Bonding requires Agent1 registration via sdbus-kotlin
+    //  createObject/addVTable, which currently NPEs. See sdbus-kotlin TODO.
     //
     // TODO: L2CAP CoC not exposed via BlueZ D-Bus API.
     //  Android's createL2capChannel requires encryption.

@@ -1,9 +1,7 @@
 package dev.bluefalcon
 
-import com.monkopedia.sdbus.Connection
 import com.monkopedia.sdbus.InterfaceName
 import com.monkopedia.sdbus.ObjectPath
-import com.monkopedia.sdbus.Proxy
 import com.monkopedia.sdbus.Resource
 import com.monkopedia.sdbus.ServiceName
 import com.monkopedia.sdbus.SignalName
@@ -55,6 +53,10 @@ actual class BlueFalcon actual constructor(
         )
         connection.enterEventLoopAsync()
     }
+
+    // TODO: Agent1 registration for pairing — createObject + addVTable NPEs
+    // in sdbus-kotlin. See ../sdbus-kotlin/TODO.md. Without an agent,
+    // Device1.Pair() always fails with AuthenticationFailed.
 
     actual fun scan(filters: List<ServiceFilter>) {
         log?.info("Scan started with filters: $filters")
@@ -436,9 +438,8 @@ actual class BlueFalcon actual constructor(
                     createProxy(connection, bluezService, impl.device.objectPath)
                 )
                 deviceProxy.pair()
-                notifyDelegates {
-                    it.didBondStateChanged(bluetoothPeripheral, BlueFalconBondState.Bonded)
-                }
+                // didBondStateChanged fires from PropertiesChanged handler
+                // when Paired property becomes true
             } catch (e: Exception) {
                 log?.error("Pair failed: ${e.message}", e)
                 notifyDelegates {
@@ -512,6 +513,15 @@ actual class BlueFalcon actual constructor(
         changed["RSSI"]?.let {
             peripheral.rssi = it.get<Short>().toFloat()
             notifyDelegates { it.didRssiUpdate(peripheral) }
+        }
+        changed["Paired"]?.let { v ->
+            val paired = v.get<Boolean>()
+            notifyDelegates {
+                it.didBondStateChanged(
+                    peripheral,
+                    if (paired) BlueFalconBondState.Bonded else BlueFalconBondState.None
+                )
+            }
         }
         changed["ServicesResolved"]?.let { v ->
             if (v.get<Boolean>()) {
