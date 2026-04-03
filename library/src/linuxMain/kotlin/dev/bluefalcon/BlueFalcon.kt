@@ -487,10 +487,10 @@ actual class BlueFalcon actual constructor(
         val listeners = propertiesListeners.toMap()
         propertiesListeners.clear()
         listeners.values.forEach { try { it.release() } catch (_: Exception) {} }
-        // Cancel remaining coroutines and close D-Bus connection
+        // TODO: properly call connection.leaveEventLoop() — it's suspend
+        // but destroy() isn't. For now, cancel our coroutines and let the
+        // event loop thread be cleaned up with the connection.
         scope.cancel()
-        // leaveEventLoop is suspend but destroy() isn't — use a detached scope
-        CoroutineScope(Dispatchers.IO).launch { connection.leaveEventLoop() }
     }
 
     // ---- Internal ----
