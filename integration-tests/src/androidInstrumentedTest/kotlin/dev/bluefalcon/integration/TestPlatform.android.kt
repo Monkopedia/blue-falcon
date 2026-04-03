@@ -26,8 +26,6 @@ actual fun ensurePlatformReady() {
     val uiAutomation = instrumentation.uiAutomation
     val pkg = instrumentation.targetContext.packageName
 
-    // Grant BLE permissions — SDK 31+ has BLUETOOTH_SCAN/CONNECT,
-    // older versions just need ACCESS_FINE_LOCATION
     val permissions = mutableListOf("android.permission.ACCESS_FINE_LOCATION")
     if (Build.VERSION.SDK_INT >= 31) {
         permissions.add("android.permission.BLUETOOTH_SCAN")
@@ -39,7 +37,6 @@ actual fun ensurePlatformReady() {
         } catch (_: Exception) {}
     }
 
-    // Launch foreground activity (Android throttles background BLE scans)
     val context = instrumentation.targetContext
     val intent = Intent(context, BleTestActivity::class.java).apply {
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -55,4 +52,21 @@ actual fun writeNoResponse(
     value: ByteArray
 ) {
     falcon.writeCharacteristicWithoutEncoding(peripheral, characteristic, value, writeType = 2)
+}
+
+actual suspend fun awaitFullDisconnect(peripheral: BluetoothPeripheral) {
+    // After disconnect, scan briefly until the device re-appears in
+    // advertisements — that confirms the radio link is fully released.
+    val falcon = createBlueFalcon()
+    val harness = BlueFalconTestHarness(falcon)
+    try {
+        harness.scanForDevice(filters = emptyList(), timeoutMs = 60_000L) { device, _ ->
+            device.name == BfTestConstants.DEVICE_NAME
+        }
+    } catch (_: Exception) {
+        // Timeout is ok — best effort
+    } finally {
+        harness.destroy()
+        falcon.destroy()
+    }
 }

@@ -16,3 +16,6 @@ expect suspend fun scanForBfTestDevice(harness: BlueFalconTestHarness): Bluetoot
 
 /** Platform hook for any setup needed before BLE tests (permissions, foreground, etc). */
 expect fun ensurePlatformReady()
+
+/** Platform hook for cleanup after disconnect — ensures BLE radio releases the link. */
+expect suspend fun awaitFullDisconnect(peripheral: BluetoothPeripheral)

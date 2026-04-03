@@ -44,6 +44,7 @@ class BleIntegrationTests {
             try {
                 h.disconnectAndAwait(p)
             } catch (_: Exception) {}
+            awaitFullDisconnect(p)
         }
         h.destroy()
         h.falcon.destroy()

@@ -32,3 +32,7 @@ actual fun writeNoResponse(
     // writeType 1 = command (no response) in our Linux BlueFalcon implementation
     falcon.writeCharacteristicWithoutEncoding(peripheral, characteristic, value, writeType = 1)
 }
+
+actual suspend fun awaitFullDisconnect(peripheral: BluetoothPeripheral) {
+    // BlueZ disconnect is synchronous via D-Bus — no extra wait needed
+}
