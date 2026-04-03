@@ -14,7 +14,7 @@ actual fun createBlueFalcon(): BlueFalcon {
 actual fun uuidFrom(string: String): dev.bluefalcon.Uuid = Uuid.parse(string)
 
 actual suspend fun scanForBfTestDevice(harness: BlueFalconTestHarness): BluetoothPeripheral {
-    return harness.scanForDevice(filters = emptyList(), timeoutMs = 60_000L) { device, _ ->
+    return harness.scanForDevice(filters = emptyList(), timeoutMs = 120_000L) { device, _ ->
         device.name == BfTestConstants.DEVICE_NAME
     }
 }

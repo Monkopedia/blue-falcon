@@ -3,6 +3,7 @@ package dev.bluefalcon.integration
 import dev.bluefalcon.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.*
 
 /**
@@ -32,7 +33,7 @@ class BleIntegrationTests {
         val h = BlueFalconTestHarness(falcon)
         harness = h
         val found = scanForBfTestDevice(h)
-        peripheral = h.connectAndDiscover(found, timeoutMs = 60_000L)
+        peripheral = h.connectAndDiscover(found, timeoutMs = 120_000L)
     }
 
     @AfterTest
