@@ -197,11 +197,22 @@ class BleIntegrationTests {
         assertEquals(0, status, "MTU change should succeed (status 0 = GATT_SUCCESS)")
     }
 
-    // TODO: Bonding — Agent1 registration now works (NoInputNoOutputAgent),
-    //  but Device1.Pair() still fails with AuthenticationFailed on BlueZ 5.86.
-    //  The "No matching connection for device" error in bluetoothd suggests
-    //  a BlueZ or adapter issue, not a blue-falcon bug.
-    //
+    // ---- Bonding (runs last before cleanup since it disrupts the connection) ----
+
+    @Test
+    fun yy_bondAndReadEncrypted(): Unit = runBlocking {
+        try {
+            harness.createBondAndAwait(peripheral, timeoutMs = 15_000L)
+        } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+            // May already be bonded from a previous run
+        }
+
+        val charG = findChar(BfTestConstants.CHAR_G_ENCRYPTED)
+        val result = harness.readCharacteristicAndAwait(peripheral, charG)
+        assertContentEquals(BfTestConstants.CHAR_G_EXPECTED, result.value,
+            "Char G should return SECURE after bonding")
+    }
+
     // TODO: L2CAP CoC not exposed via BlueZ D-Bus API.
     //  Android's createL2capChannel requires encryption.
     //  blue-falcon may need platform-specific L2CAP support.
