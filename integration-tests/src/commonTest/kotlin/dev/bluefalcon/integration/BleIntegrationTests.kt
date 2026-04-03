@@ -38,7 +38,11 @@ class BleIntegrationTests {
     fun tearDown() = runBlocking {
         try {
             harness.disconnectAndAwait(peripheral)
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+            // If disconnect timed out, wait for the in-flight D-Bus call
+            // to complete before destroying
+            delay(2000)
+        }
         harness.destroy()
         harness.falcon.destroy()
     }
