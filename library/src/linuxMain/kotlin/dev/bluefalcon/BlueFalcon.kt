@@ -34,6 +34,10 @@ actual class BlueFalcon actual constructor(
     actual val managerState: StateFlow<BluetoothManagerState> =
         MutableStateFlow(BluetoothManagerState.Ready)
 
+    companion object {
+        private var pendingShutdown: Job? = null
+    }
+
     private val connection = createSystemBusConnection()
     private val bluezService = ServiceName("org.bluez")
     private val adapterPath = ObjectPath("/org/bluez/hci0")
@@ -46,7 +50,11 @@ actual class BlueFalcon actual constructor(
     private var scanJob: Job? = null
     private val agentPath = ObjectPath("/dev/bluefalcon/agent")
 
-    init {
+    private val initJob = scope.launch {
+        // Wait for any previous instance's event loop to shut down
+        pendingShutdown?.join()
+        pendingShutdown = null
+
         adapterProxy = Adapter1Proxy(
             createProxy(connection, bluezService, adapterPath)
         )
@@ -79,6 +87,7 @@ actual class BlueFalcon actual constructor(
         isScanning = true
 
         scope.launch {
+            initJob.join()
             try {
                 val filterMap = mutableMapOf<String, Variant>(
                     "Transport" to Variant("le"),
@@ -151,6 +160,7 @@ actual class BlueFalcon actual constructor(
         log?.info("Connecting to ${impl.uuid}")
 
         scope.launch {
+            initJob.join()
             try {
                 val deviceProxy = Device1Proxy(
                     createProxy(connection, bluezService, impl.device.objectPath)
@@ -182,14 +192,18 @@ actual class BlueFalcon actual constructor(
     actual fun disconnect(bluetoothPeripheral: BluetoothPeripheral) {
         val impl = bluetoothPeripheral as BluetoothPeripheralImpl
         scope.launch {
-            try {
-                val deviceProxy = Device1Proxy(
-                    createProxy(connection, bluezService, impl.device.objectPath)
-                )
-                deviceProxy.disconnect()
-                propertiesListeners.remove(impl.device.objectPath)?.release()
-            } catch (e: Exception) {
-                log?.error("Disconnect failed: ${e.message}", e)
+            // Use NonCancellable so scope.cancel() in destroy() doesn't
+            // kill the D-Bus disconnect call mid-flight
+            withContext(kotlinx.coroutines.NonCancellable) {
+                try {
+                    val deviceProxy = Device1Proxy(
+                        createProxy(connection, bluezService, impl.device.objectPath)
+                    )
+                    deviceProxy.disconnect()
+                    propertiesListeners.remove(impl.device.objectPath)?.release()
+                } catch (e: Exception) {
+                    log?.error("Disconnect failed: ${e.message}", e)
+                }
             }
             notifyDelegates { it.didDisconnect(bluetoothPeripheral) }
         }
@@ -479,17 +493,17 @@ actual class BlueFalcon actual constructor(
     }
 
     actual fun destroy() {
-        // Stop scanning first (cancels scan coroutine)
         isScanning = false
         scanJob?.cancel()
         scanJob = null
-        // Release listeners before closing connection
         val listeners = propertiesListeners.toMap()
         propertiesListeners.clear()
         listeners.values.forEach { try { it.release() } catch (_: Exception) {} }
-        // TODO: properly call connection.leaveEventLoop() — it's suspend
-        // but destroy() isn't. For now, cancel our coroutines and let the
-        // event loop thread be cleaned up with the connection.
+        // Kick off event loop shutdown — the next BlueFalcon instance
+        // will await this in its initJob before using the D-Bus connection
+        pendingShutdown = CoroutineScope(Dispatchers.IO).launch {
+            connection.leaveEventLoop()
+        }
         scope.cancel()
     }
 
