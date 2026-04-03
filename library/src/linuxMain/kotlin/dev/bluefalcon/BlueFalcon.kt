@@ -54,11 +54,7 @@ actual class BlueFalcon actual constructor(
             createProxy(connection, bluezService, bluezRoot)
         )
         connection.enterEventLoopAsync()
-        try {
-            registerAgent()
-        } catch (e: Exception) {
-            log?.error("Failed to register pairing agent: ${e.message}", e)
-        }
+        registerAgent()
     }
 
     private fun registerAgent() {
@@ -67,11 +63,15 @@ actual class BlueFalcon actual constructor(
         val agentManager = AgentManager1Proxy(
             createProxy(connection, bluezService, ObjectPath("/org/bluez"))
         )
-        runBlocking {
-            agentManager.registerAgent(agentPath, "NoInputNoOutput")
-            agentManager.requestDefaultAgent(agentPath)
+        scope.launch {
+            try {
+                agentManager.registerAgent(agentPath, "NoInputNoOutput")
+                agentManager.requestDefaultAgent(agentPath)
+                log?.info("Registered NoInputNoOutput pairing agent")
+            } catch (e: Exception) {
+                log?.error("Failed to register pairing agent: ${e.message}", e)
+            }
         }
-        log?.info("Registered NoInputNoOutput pairing agent")
     }
 
     actual fun scan(filters: List<ServiceFilter>) {
@@ -191,7 +191,6 @@ actual class BlueFalcon actual constructor(
             } catch (e: Exception) {
                 log?.error("Disconnect failed: ${e.message}", e)
             }
-            // Always notify even if disconnect threw — the connection is dead
             notifyDelegates { it.didDisconnect(bluetoothPeripheral) }
         }
     }
@@ -490,7 +489,8 @@ actual class BlueFalcon actual constructor(
         listeners.values.forEach { try { it.release() } catch (_: Exception) {} }
         // Cancel remaining coroutines and close D-Bus connection
         scope.cancel()
-        runBlocking { connection.leaveEventLoop() }
+        // leaveEventLoop is suspend but destroy() isn't — use a detached scope
+        CoroutineScope(Dispatchers.IO).launch { connection.leaveEventLoop() }
     }
 
     // ---- Internal ----

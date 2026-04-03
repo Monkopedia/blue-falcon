@@ -22,29 +22,25 @@ import kotlin.test.*
  */
 class BleIntegrationTests {
 
-    companion object {
-        lateinit var harness: BlueFalconTestHarness
-        lateinit var peripheral: BluetoothPeripheral
-        private var setupDone = false
-
-        fun ensureConnected() {
-            if (setupDone) return
-            ensurePlatformReady()
-            runBlocking {
-                val falcon = createBlueFalcon()
-                harness = BlueFalconTestHarness(falcon)
-                val found = scanForBfTestDevice(harness)
-                // connectAndDiscover handles both fresh connections and
-                // devices that are already connected in the BLE stack
-                peripheral = harness.connectAndDiscover(found, timeoutMs = 60_000L)
-                setupDone = true
-            }
-        }
-    }
+    lateinit var harness: BlueFalconTestHarness
+    lateinit var peripheral: BluetoothPeripheral
 
     @BeforeTest
-    fun setUp() {
-        ensureConnected()
+    fun setUp() = runBlocking {
+        ensurePlatformReady()
+        val falcon = createBlueFalcon()
+        harness = BlueFalconTestHarness(falcon)
+        val found = scanForBfTestDevice(harness)
+        peripheral = harness.connectAndDiscover(found, timeoutMs = 60_000L)
+    }
+
+    @AfterTest
+    fun tearDown() = runBlocking {
+        try {
+            harness.disconnectAndAwait(peripheral)
+        } catch (_: Exception) {}
+        harness.destroy()
+        harness.falcon.destroy()
     }
 
     private fun findChar(uuid: String): BluetoothCharacteristic {
@@ -197,10 +193,10 @@ class BleIntegrationTests {
         assertEquals(0, status, "MTU change should succeed (status 0 = GATT_SUCCESS)")
     }
 
-    // ---- Bonding (runs last before cleanup since it disrupts the connection) ----
+    // ---- Bonding ----
 
     @Test
-    fun yy_bondAndReadEncrypted(): Unit = runBlocking {
+    fun bondAndReadEncrypted(): Unit = runBlocking {
         try {
             harness.createBondAndAwait(peripheral, timeoutMs = 15_000L)
         } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
@@ -217,22 +213,6 @@ class BleIntegrationTests {
     //  Android's createL2capChannel requires encryption.
     //  blue-falcon may need platform-specific L2CAP support.
 
-    // ---- Cleanup ----
-    // Named with zz_ prefix to ensure it runs last (alphabetical ordering)
-
-    @Test
-    fun zz_disconnect(): Unit = runBlocking {
-        if (setupDone) {
-            try {
-                harness.disconnectAndAwait(peripheral)
-            } catch (_: Exception) {
-                // Disconnect may timeout — still need to destroy
-            }
-            harness.destroy()
-            harness.falcon.destroy()
-            setupDone = false
-        }
-    }
 }
 
 /**
